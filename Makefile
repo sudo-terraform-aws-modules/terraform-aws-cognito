@@ -1,4 +1,4 @@
-.PHONY: help setup fmt validate lint checkov docs pre-commit
+.PHONY: help setup fmt validate lint checkov docs pre-commit test
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -27,6 +27,10 @@ checkov: ## Run checkov security scan
 
 docs: ## Generate terraform-docs README
 	terraform-docs markdown table --output-file README.md --output-mode inject .
+
+test: ## Run unit tests against a mock provider (Terraform 1.7+)
+	terraform init -backend=false -input=false
+	terraform test -filter=tests/unit.tftest.hcl
 
 pre-commit: ## Run all pre-commit hooks against all files
 	SKIP=no-commit-to-branch pre-commit run --all-files

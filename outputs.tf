@@ -81,6 +81,11 @@ output "resource_server_scope_identifiers" {
   value       = { for id, server in aws_cognito_resource_server.this : id => server.scope_identifiers }
 }
 
+output "managed_login_branding_ids" {
+  description = "Managed login branding style IDs keyed by client name"
+  value       = { for name, branding in aws_cognito_managed_login_branding.this : name => branding.managed_login_branding_id }
+}
+
 output "identity_provider_names" {
   description = "Names of the federated identity providers, for use in supported_identity_providers"
   value       = [for provider in aws_cognito_identity_provider.this : provider.provider_name]

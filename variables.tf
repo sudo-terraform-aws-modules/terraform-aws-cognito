@@ -305,6 +305,84 @@ variable "advanced_security_custom_auth_mode" {
   }
 }
 
+variable "risk_configuration" {
+  description = "Threat protection responses for the whole pool. Needs PLUS and advanced_security_mode = ENFORCED. Event actions are BLOCK, MFA_IF_CONFIGURED, MFA_REQUIRED or NO_ACTION. notify needs notify_configuration with a verified SES identity"
+  type = object({
+    compromised_credentials_action       = optional(string, "BLOCK")
+    compromised_credentials_event_filter = optional(list(string), ["SIGN_IN", "PASSWORD_CHANGE", "SIGN_UP"])
+    account_takeover = optional(object({
+      low_action = optional(object({
+        event_action = string
+        notify       = optional(bool, false)
+      }), { event_action = "NO_ACTION" })
+      medium_action = optional(object({
+        event_action = string
+        notify       = optional(bool, false)
+      }), { event_action = "MFA_IF_CONFIGURED" })
+      high_action = optional(object({
+        event_action = string
+        notify       = optional(bool, false)
+      }), { event_action = "BLOCK" })
+      notify_configuration = optional(object({
+        source_arn = string
+        from       = optional(string)
+        reply_to   = optional(string)
+      }))
+    }), {})
+    blocked_ip_ranges = optional(list(string))
+    skipped_ip_ranges = optional(list(string))
+  })
+  default = null
+
+  validation {
+    condition = var.risk_configuration == null || alltrue([
+      for a in try([
+        var.risk_configuration.account_takeover.low_action.event_action,
+        var.risk_configuration.account_takeover.medium_action.event_action,
+        var.risk_configuration.account_takeover.high_action.event_action,
+      ], []) : contains(["BLOCK", "MFA_IF_CONFIGURED", "MFA_REQUIRED", "NO_ACTION"], a)
+    ])
+    error_message = "account_takeover event_action must be BLOCK, MFA_IF_CONFIGURED, MFA_REQUIRED or NO_ACTION."
+  }
+
+  validation {
+    condition     = var.risk_configuration == null || contains(["BLOCK", "NO_ACTION"], try(var.risk_configuration.compromised_credentials_action, ""))
+    error_message = "compromised_credentials_action must be BLOCK or NO_ACTION."
+  }
+}
+
+variable "log_delivery" {
+  description = "Exports user pool logs. userNotification at ERROR covers message delivery failures on any tier; userAuthEvents at INFO records sign-in activity and needs PLUS. Set exactly one destination per entry"
+  type = list(object({
+    event_source             = string
+    log_level                = string
+    cloudwatch_log_group_arn = optional(string)
+    firehose_stream_arn      = optional(string)
+    s3_bucket_arn            = optional(string)
+  }))
+  default  = []
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for l in var.log_delivery : contains(["userNotification", "userAuthEvents"], l.event_source) && contains(["ERROR", "INFO"], l.log_level)
+    ])
+    error_message = "log_delivery event_source must be userNotification or userAuthEvents, and log_level ERROR or INFO."
+  }
+
+  validation {
+    condition = alltrue([
+      for l in var.log_delivery : length(compact([l.cloudwatch_log_group_arn, l.firehose_stream_arn, l.s3_bucket_arn])) == 1
+    ])
+    error_message = "Each log_delivery entry needs exactly one of cloudwatch_log_group_arn, firehose_stream_arn or s3_bucket_arn."
+  }
+
+  validation {
+    condition     = alltrue([for l in var.log_delivery : l.event_source != "userNotification" || l.cloudwatch_log_group_arn != null])
+    error_message = "userNotification logs can only be delivered to CloudWatch Logs."
+  }
+}
+
 ################################################################################
 # Domain
 ################################################################################
@@ -321,8 +399,17 @@ variable "domain_certificate_arn" {
   default     = null
 }
 
+variable "hosted_ui_customization" {
+  description = "CSS and logo for the classic hosted UI (domain_managed_login_version 1), applied to every client. image_file is the base64 encoded logo"
+  type = object({
+    css        = optional(string)
+    image_file = optional(string)
+  })
+  default = null
+}
+
 variable "domain_managed_login_version" {
-  description = "1 for the classic hosted UI, 2 for managed login. Version 2 shows no pages until a branding style exists for the client"
+  description = "1 for the classic hosted UI, 2 for managed login. With 2, every client using the code flow gets a branding style, the Cognito default unless managed_login_branding is set on the client"
   type        = number
   default     = null
 
@@ -374,6 +461,15 @@ variable "clients" {
     refresh_token_rotation = optional(object({
       enabled                    = optional(bool, true)
       retry_grace_period_seconds = optional(number)
+    }))
+    managed_login_branding = optional(object({
+      settings = optional(string)
+      assets = optional(list(object({
+        category   = string
+        color_mode = string
+        extension  = string
+        bytes      = string
+      })), [])
     }))
   }))
   default  = {}

@@ -3,6 +3,12 @@ locals {
 
   identity_pool_name = try(coalesce(var.identity_pool.name, replace(var.name, "/[^\\w ]/", "_")), null)
 
+  # Managed login serves no pages to a client without a branding style
+  branded_clients = {
+    for name, client in var.clients : name => client
+    if client.managed_login_branding != null || (var.domain != null && var.domain_managed_login_version == 2 && contains(client.allowed_oauth_flows, "code"))
+  }
+
   user_group_memberships = merge({}, [
     for username, user in var.users : {
       for group in user.groups : "${username}/${group}" => {
@@ -250,6 +256,99 @@ resource "aws_cognito_user_pool" "this" {
   tags = var.tags
 }
 
+resource "aws_cognito_risk_configuration" "this" {
+  count = var.risk_configuration != null ? 1 : 0
+
+  region       = var.region
+  user_pool_id = aws_cognito_user_pool.this.id
+
+  compromised_credentials_risk_configuration {
+    event_filter = var.risk_configuration.compromised_credentials_event_filter
+
+    actions {
+      event_action = var.risk_configuration.compromised_credentials_action
+    }
+  }
+
+  account_takeover_risk_configuration {
+    actions {
+      low_action {
+        event_action = var.risk_configuration.account_takeover.low_action.event_action
+        notify       = var.risk_configuration.account_takeover.low_action.notify
+      }
+
+      medium_action {
+        event_action = var.risk_configuration.account_takeover.medium_action.event_action
+        notify       = var.risk_configuration.account_takeover.medium_action.notify
+      }
+
+      high_action {
+        event_action = var.risk_configuration.account_takeover.high_action.event_action
+        notify       = var.risk_configuration.account_takeover.high_action.notify
+      }
+    }
+
+    dynamic "notify_configuration" {
+      for_each = var.risk_configuration.account_takeover.notify_configuration[*]
+
+      content {
+        source_arn = notify_configuration.value.source_arn
+        from       = notify_configuration.value.from
+        reply_to   = notify_configuration.value.reply_to
+      }
+    }
+  }
+
+  dynamic "risk_exception_configuration" {
+    for_each = var.risk_configuration.blocked_ip_ranges != null || var.risk_configuration.skipped_ip_ranges != null ? [1] : []
+
+    content {
+      blocked_ip_range_list = var.risk_configuration.blocked_ip_ranges
+      skipped_ip_range_list = var.risk_configuration.skipped_ip_ranges
+    }
+  }
+}
+
+resource "aws_cognito_log_delivery_configuration" "this" {
+  count = length(var.log_delivery) > 0 ? 1 : 0
+
+  region       = var.region
+  user_pool_id = aws_cognito_user_pool.this.id
+
+  dynamic "log_configurations" {
+    for_each = var.log_delivery
+
+    content {
+      event_source = log_configurations.value.event_source
+      log_level    = log_configurations.value.log_level
+
+      dynamic "cloud_watch_logs_configuration" {
+        for_each = log_configurations.value.cloudwatch_log_group_arn[*]
+
+        content {
+          log_group_arn = cloud_watch_logs_configuration.value
+        }
+      }
+
+      dynamic "firehose_configuration" {
+        for_each = log_configurations.value.firehose_stream_arn[*]
+
+        content {
+          stream_arn = firehose_configuration.value
+        }
+      }
+
+      dynamic "s3_configuration" {
+        for_each = log_configurations.value.s3_bucket_arn[*]
+
+        content {
+          bucket_arn = s3_configuration.value
+        }
+      }
+    }
+  }
+}
+
 resource "aws_cognito_user_pool_domain" "this" {
   count = var.domain != null ? 1 : 0
 
@@ -309,10 +408,10 @@ resource "aws_cognito_user_pool_client" "this" {
   generate_secret                               = each.value.generate_secret
   explicit_auth_flows                           = try(each.value.refresh_token_rotation.enabled, false) ? [for f in each.value.explicit_auth_flows : f if f != "ALLOW_REFRESH_TOKEN_AUTH"] : each.value.explicit_auth_flows
   allowed_oauth_flows_user_pool_client          = length(each.value.allowed_oauth_flows) > 0
-  allowed_oauth_flows                           = length(each.value.allowed_oauth_flows) > 0 ? each.value.allowed_oauth_flows : null
-  allowed_oauth_scopes                          = length(each.value.allowed_oauth_scopes) > 0 ? each.value.allowed_oauth_scopes : null
-  callback_urls                                 = length(each.value.callback_urls) > 0 ? each.value.callback_urls : null
-  logout_urls                                   = length(each.value.logout_urls) > 0 ? each.value.logout_urls : null
+  allowed_oauth_flows                           = each.value.allowed_oauth_flows
+  allowed_oauth_scopes                          = each.value.allowed_oauth_scopes
+  callback_urls                                 = each.value.callback_urls
+  logout_urls                                   = each.value.logout_urls
   default_redirect_uri                          = each.value.default_redirect_uri
   supported_identity_providers                  = each.value.supported_identity_providers
   read_attributes                               = each.value.read_attributes
@@ -345,6 +444,38 @@ resource "aws_cognito_user_pool_client" "this" {
     aws_cognito_identity_provider.this,
     aws_cognito_resource_server.this,
   ]
+}
+
+resource "aws_cognito_managed_login_branding" "this" {
+  for_each = local.branded_clients
+
+  region                      = var.region
+  user_pool_id                = aws_cognito_user_pool.this.id
+  client_id                   = aws_cognito_user_pool_client.this[each.key].id
+  settings                    = try(each.value.managed_login_branding.settings, null)
+  use_cognito_provided_values = try(each.value.managed_login_branding.settings, null) == null && length(try(each.value.managed_login_branding.assets, [])) == 0 ? true : null
+
+  dynamic "asset" {
+    for_each = try(each.value.managed_login_branding.assets, [])
+
+    content {
+      category   = asset.value.category
+      color_mode = asset.value.color_mode
+      extension  = asset.value.extension
+      bytes      = asset.value.bytes
+    }
+  }
+}
+
+resource "aws_cognito_user_pool_ui_customization" "this" {
+  count = var.domain != null && var.hosted_ui_customization != null ? 1 : 0
+
+  region     = var.region
+  css        = var.hosted_ui_customization.css
+  image_file = var.hosted_ui_customization.image_file
+
+  # The domain must exist before the hosted UI can be customised
+  user_pool_id = aws_cognito_user_pool_domain.this[0].user_pool_id
 }
 
 ################################################################################

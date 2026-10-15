@@ -57,10 +57,9 @@ variable "alias_attributes" {
 }
 
 variable "username_case_sensitive" {
-  description = "Whether usernames and aliases are case sensitive. Cannot be changed after creation"
+  description = "Whether usernames and aliases are case sensitive. Cannot be changed after creation. Set to null when adopting a pool created without this setting, since adding it replaces the pool"
   type        = bool
   default     = false
-  nullable    = false
 }
 
 variable "auto_verified_attributes" {

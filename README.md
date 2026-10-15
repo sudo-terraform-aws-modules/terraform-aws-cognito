@@ -1,6 +1,7 @@
 # terraform-aws-cognito
 
-[![Terraform CI](https://github.com/sudo-terraform-aws-modules/terraform-aws-cognito/actions/workflows/main.yml/badge.svg)](https://github.com/sudo-terraform-aws-modules/terraform-aws-cognito/actions/workflows/main.yml) [![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.3.0-7B42BC?logo=terraform)](versions.tf) [![AWS provider](https://img.shields.io/badge/aws%20provider-%3E%3D6.13.0-FF9900)](versions.tf) [![License](https://img.shields.io/github/license/sudo-terraform-aws-modules/terraform-aws-cognito)](LICENSE)
+| [![Terraform CI](https://github.com/sudo-terraform-aws-modules/terraform-aws-cognito/actions/workflows/main.yml/badge.svg)](https://github.com/sudo-terraform-aws-modules/terraform-aws-cognito/actions/workflows/main.yml) | [![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.3.0-7B42BC?logo=terraform)](versions.tf) | [![AWS provider](https://img.shields.io/badge/aws%20provider-%3E%3D6.13.0-FF9900)](versions.tf) | [![License](https://img.shields.io/github/license/sudo-terraform-aws-modules/terraform-aws-cognito)](LICENSE) |
+|---|---|---|---|
 
 <img width="600" alt="SUDO x AWS" src="https://github.com/user-attachments/assets/f7044ff9-afce-4811-91c6-2f3c95635abb" />
 
@@ -48,7 +49,7 @@ See [examples/minimal](examples/minimal) and [examples/complete](examples/comple
 
 ## Things to know before you apply
 
-**Settings fixed at creation.** `username_attributes`, `alias_attributes`, `username_case_sensitive` and existing `schema_attributes` cannot be changed on a live pool. Changing them fails or replaces the pool, and replacing a pool deletes every user in it.
+**Settings fixed at creation.** `username_attributes`, `alias_attributes`, `username_case_sensitive` and existing `schema_attributes` cannot be changed on a live pool. Changing them fails or replaces the pool, and replacing a pool deletes every user in it. When adopting a pool that was created without a username configuration, set `username_case_sensitive = null`, since adding one replaces the pool.
 
 **Deletion protection.** `deletion_protection` defaults to `true`. To destroy a pool, apply with it set to `false` first.
 
@@ -151,7 +152,7 @@ No modules.
 | <a name="input_user_groups"></a> [user\_groups](#input\_user\_groups) | User groups keyed by group name. Lower precedence wins when a user is in several groups with roles | <pre>map(object({<br/>    description = optional(string)<br/>    precedence  = optional(number)<br/>    role_arn    = optional(string)<br/>  }))</pre> | `{}` | no |
 | <a name="input_user_pool_tier"></a> [user\_pool\_tier](#input\_user\_pool\_tier) | Feature plan of the user pool: LITE, ESSENTIALS or PLUS. Threat protection (advanced\_security\_mode) needs PLUS | `string` | `"ESSENTIALS"` | no |
 | <a name="input_username_attributes"></a> [username\_attributes](#input\_username\_attributes) | Attributes users sign in with instead of a username (email, phone\_number). Conflicts with alias\_attributes. Cannot be changed after creation | `list(string)` | <pre>[<br/>  "email"<br/>]</pre> | no |
-| <a name="input_username_case_sensitive"></a> [username\_case\_sensitive](#input\_username\_case\_sensitive) | Whether usernames and aliases are case sensitive. Cannot be changed after creation | `bool` | `false` | no |
+| <a name="input_username_case_sensitive"></a> [username\_case\_sensitive](#input\_username\_case\_sensitive) | Whether usernames and aliases are case sensitive. Cannot be changed after creation. Set to null when adopting a pool created without this setting, since adding it replaces the pool | `bool` | `false` | no |
 | <a name="input_users"></a> [users](#input\_users) | Users to bootstrap, keyed by username. Cognito delivers a temporary password, so no password passes through Terraform. Meant for initial administrators, not for managing the user base | <pre>map(object({<br/>    attributes               = optional(map(string), {})<br/>    groups                   = optional(list(string), [])<br/>    desired_delivery_mediums = optional(list(string), ["EMAIL"])<br/>    enabled                  = optional(bool, true)<br/>    message_action           = optional(string)<br/>  }))</pre> | `{}` | no |
 | <a name="input_verification_message_template"></a> [verification\_message\_template](#input\_verification\_message\_template) | Messages sent to verify email addresses and phone numbers | <pre>object({<br/>    default_email_option  = optional(string)<br/>    email_subject         = optional(string)<br/>    email_message         = optional(string)<br/>    email_subject_by_link = optional(string)<br/>    email_message_by_link = optional(string)<br/>    sms_message           = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_web_authn_configuration"></a> [web\_authn\_configuration](#input\_web\_authn\_configuration) | Passkey settings. relying\_party\_id defaults to the user pool domain | <pre>object({<br/>    relying_party_id  = optional(string)<br/>    user_verification = optional(string, "required")<br/>  })</pre> | `null` | no |

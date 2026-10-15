@@ -28,6 +28,11 @@ run "secure_defaults" {
   }
 
   assert {
+    condition     = aws_cognito_user_pool.this.username_configuration[0].case_sensitive == false
+    error_message = "New pools must be case insensitive by default."
+  }
+
+  assert {
     condition     = aws_cognito_user_pool.this.user_attribute_update_settings[0].attributes_require_verification_before_update == toset(["email"])
     error_message = "Attribute update verification must follow auto_verified_attributes."
   }
@@ -35,6 +40,19 @@ run "secure_defaults" {
   assert {
     condition     = length(aws_cognito_user_pool.this.user_pool_add_ons) == 0 && length(aws_cognito_risk_configuration.this) == 0
     error_message = "Threat protection must not be configured unless asked for."
+  }
+}
+
+run "omits_username_configuration_when_null" {
+  command = plan
+
+  variables {
+    username_case_sensitive = null
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool.this.username_configuration) == 0
+    error_message = "A null username_case_sensitive must leave username_configuration out so existing pools are not replaced."
   }
 }
 

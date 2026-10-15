@@ -34,8 +34,12 @@ resource "aws_cognito_user_pool" "this" {
   auto_verified_attributes   = var.auto_verified_attributes
   sms_authentication_message = var.sms_authentication_message
 
-  username_configuration {
-    case_sensitive = var.username_case_sensitive
+  dynamic "username_configuration" {
+    for_each = var.username_case_sensitive != null ? [1] : []
+
+    content {
+      case_sensitive = var.username_case_sensitive
+    }
   }
 
   admin_create_user_config {
